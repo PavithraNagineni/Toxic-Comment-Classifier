@@ -1,92 +1,110 @@
-# 🔥 Toxic Comment Classifier (TextCNN + FastAPI)
+# Toxic Comment Classifier
 
-This project implements a production-ready **toxic comment classification system** using a custom **TextCNN model in PyTorch**, a complete preprocessing pipeline, and a **FastAPI** microservice for real-time inference.
+Multi-label toxicity detection using TextCNN (Kim 2014) with a complete NLP preprocessing pipeline and FastAPI microservice for real-time inference.
 
-It is designed with an industry-style structure, making it ideal for AIML/ML Engineer portfolios.
+## Architecture
+```
+Raw Text → TextPreprocessor (clean → tokenize → encode → pad)
+                ↓
+          TextCNN Model
+    Embedding → Conv1d(k=2,3,4,5) → ReLU → MaxPool
+              → Concat → Dropout → FC(6)
+                ↓
+     Sigmoid → Multi-label probabilities
+    [toxic, severe_toxic, obscene, threat, insult, identity_hate]
+                ↓
+         FastAPI microservice
+     POST /classify  |  POST /classify/batch
+```
 
----
+## Project Structure
+```
+toxic_comment/
+├── preprocessing.py   # TextPreprocessor: clean, vocab, encode, pad
+├── model.py           # TextCNN architecture + ToxicDataset
+├── train.py           # Training loop, MLflow tracking, early stopping
+├── main.py            # FastAPI service: /classify, /classify/batch
+├── Dockerfile
+└── requirements.txt
+```
 
-## 🚀 Features
-- Custom **TextCNN** deep learning architecture  
-- Full **NLP preprocessing pipeline** (tokenization, vocab creation, padding)  
-- Real-time inference with **FastAPI**  
-- Dockerized deployment  
-- Clean modular folder structure (training + inference separated)  
-- Evaluation with accuracy, precision, recall, F1  
+## Quick Start
 
----
+### 1. Install
+```bash
+pip install -r requirements.txt
+```
 
-## 🏗 System Architecture
+### 2. Get Data
+Download the [Jigsaw Toxic Comment Classification dataset](https://www.kaggle.com/c/jigsaw-toxic-comment-classification-challenge) and place at:
+```
+data/train.csv
+```
 
-              RAW TEXT
-                  |
-                  v
-    +---------------------------------+
-    |  Preprocessing Pipeline         |
-    | Tokenization, Vocab, Padding    |
-    +---------------------------------+
-                  |
-                  v
-    +---------------------------------+
-    |     TextCNN Classification      |
-    |  (Embedding → Conv → Pool → FC) |
-    +---------------------------------+
-                  |
-                  v
-    +---------------------------------+
-    |      Saved Model (.pt file)     |
-    +---------------------------------+
-                  |
-                  v
-    +---------------------------------+
-    |   FastAPI Inference Service     |
-    |   /predict → returns toxicity   |
-    +---------------------------------+
-                  |
-                  v
-              DOCKER DEPLOY
+### 3. Train
+```bash
+python train.py
+```
+Artifacts saved to `artifacts/` — model + preprocessor.
+MLflow UI: `mlflow ui`
 
+### 4. Serve
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8003
+```
 
-## 📁 Folder Structure
-toxic-comment-classifier/
+### 5. Docker
+```bash
+docker build -t toxic-api .
+docker run -p 8003:8003 toxic-api
+```
 
-│── data/
+## API Endpoints
 
-│ └── toxic_comments.csv
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | /health | Health + model info |
+| POST | /classify | Single comment |
+| POST | /classify/batch | Up to 512 comments |
+| GET | /model/info | Architecture details |
 
-│── models/
+### Single Comment
+```bash
+curl -X POST http://localhost:8003/classify \
+  -H "Content-Type: application/json" \
+  -d '{"text": "You are absolutely terrible and should disappear.", "threshold": 0.5}'
+```
 
-│ └── textcnn.pt
+### Response
+```json
+{
+  "text": "You are absolutely terrible and should disappear.",
+  "is_toxic": true,
+  "overall_toxicity_score": 0.8341,
+  "labels": {
+    "toxic": 0.8341,
+    "severe_toxic": 0.1023,
+    "obscene": 0.2145,
+    "threat": 0.0512,
+    "insult": 0.6782,
+    "identity_hate": 0.0341
+  },
+  "flagged_categories": ["toxic", "insult"],
+  "severity": "SEVERE"
+}
+```
 
-│── src/
+### Batch
+```bash
+curl -X POST http://localhost:8003/classify/batch \
+  -H "Content-Type: application/json" \
+  -d '{"texts": ["Hello world", "I hate you", "Great work!"], "threshold": 0.5}'
+```
 
-│ ├── config.py
-
-│ ├── dataset.py
-
-│ ├── model.py
-
-│ ├── train.py
-
-│ └── evaluate.py
-
-│── service/
-
-│ ├── app.py
-
-│ └── schemas.py
-
-│── requirements.txt
-
-│── Dockerfile
-
-│── README.md
-
-
-<img width="1342" height="575" alt="image" src="https://github.com/user-attachments/assets/528bf30f-fa79-4508-9c03-2df4e9f8da6f" />
-
-
-<img width="884" height="646" alt="image" src="https://github.com/user-attachments/assets/b4e33d12-9f28-41fe-8cd9-fee3779ac452" />
-
-
-<img width="1205" height="665" alt="image" src="https://github.com/user-attachments/assets/9effba8d-5482-40cb-9870-fa1073e69dc8" />
+## Model Details
+- **Architecture**: TextCNN with 4 filter sizes (2, 3, 4, 5), 128 filters each
+- **Embedding**: 128-dim trainable embeddings
+- **Loss**: BCEWithLogitsLoss with per-class positive weighting for imbalance
+- **Optimizer**: Adam + CosineAnnealingLR
+- **Labels**: 6 (toxic, severe_toxic, obscene, threat, insult, identity_hate)
+- **Threshold**: Configurable via env var `THRESHOLD` (default 0.5)
