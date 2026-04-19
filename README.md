@@ -108,3 +108,6 @@ curl -X POST http://localhost:8003/classify/batch \
 - **Optimizer**: Adam + CosineAnnealingLR
 - **Labels**: 6 (toxic, severe_toxic, obscene, threat, insult, identity_hate)
 - **Threshold**: Configurable via env var `THRESHOLD` (default 0.5)
+
+## Author
+   "Pavithra Nagineni"
